@@ -1,0 +1,25 @@
+{
+  "name": "colora",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "bin": {
+    "colora": "./bin/colora"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mmicu/colora.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mmicu/colora/issues"
+  },
+  "homepage": "https://github.com/mmicu/colora#readme",
+  "dependencies": {
+    "highlight.js": "^9.12.0"
+  }
+}
