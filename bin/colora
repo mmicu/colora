@@ -2,10 +2,45 @@
 
 'use strict';
 
-var hljs = require('highlight.js');
+const fs = require('fs');
+const hljs = require('highlight.js');
+const htmlout = require('htmlout');
+const path = require('path');
+const util = require('util');
+
+function getThemesList() {
+  var stylesPath = path.join(__dirname, path.sep, '..', path.sep, 'styles');
+  
+  if (!fs.existsSync(stylesPath)) {
+    console.error(util.format('Cannot find styles/ (%s)', stylesPath));
+    return null;
+  }
+  
+  var themesPaths = {};
+  fs.readdirSync(stylesPath).forEach(file => {
+    if (path.extname(file) == '.css')
+      themesPaths[path.parse(file).name] = path.join(stylesPath, file);
+  });
+  
+  return themesPaths;
+}
 
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', function(data) {
-  console.log(data);
+  var themesPaths = getThemesList();
+  
+  if (themesPaths == null || process.argv.length < 3 ||
+      themesPaths[process.argv[2]] === undefined) {
+    console.log(data);
+  } else {
+    var cssContent = fs.readFileSync(themesPaths[process.argv[2]], 'utf8');
+    var res = process.argv.length > 3 
+      ? hljs.highlight(process.argv[3], data) 
+      : hljs.highlightAuto(data);
+    var output = htmlout.withCSS(cssContent);
+
+    console.log(output('<pre class="hljs">' + res.value + '</pre>'));
+  }
 });
+
