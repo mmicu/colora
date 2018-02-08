@@ -7,7 +7,7 @@
     "colora": "./bin/colora"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha test"
   },
   "repository": {
     "type": "git",
@@ -20,6 +20,11 @@
   },
   "homepage": "https://github.com/mmicu/colora#readme",
   "dependencies": {
-    "highlight.js": "^9.12.0"
+    "highlight.js": "^9.12.0",
+    "parserlib": "^1.1.1"
+  },
+  "devDependencies": {
+    "chai": "^4.1.2",
+    "mocha": "^5.0.0"
   }
 }

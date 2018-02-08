@@ -4,22 +4,17 @@
 
 const fs = require('fs');
 const hljs = require('highlight.js');
-const htmlout = require('htmlout');
+const parserlib = require('parserlib');
 const path = require('path');
 const util = require('util');
 
-function getThemesList() {
-  var stylesPath = path.join(__dirname, path.sep, '..', path.sep, 'styles');
-  
-  if (!fs.existsSync(stylesPath)) {
-    console.error(util.format('Cannot find styles/ (%s)', stylesPath));
-    return null;
-  }
+function getThemesList(themesPath) {
+  if (!fs.existsSync(themesPath)) return null;
   
   var themesPaths = {};
-  fs.readdirSync(stylesPath).forEach(file => {
+  fs.readdirSync(themesPath).forEach(file => {
     if (path.extname(file) == '.css')
-      themesPaths[path.parse(file).name] = path.join(stylesPath, file);
+      themesPaths[path.parse(file).name] = path.join(themesPath, file);
   });
   
   return themesPaths;
@@ -28,11 +23,15 @@ function getThemesList() {
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', function(data) {
-  var themesPaths = getThemesList();
+  if (process.argv.length !== 3) {
+    console.error(util.format('Usage: node %s <styles directory>', process.argv[1]));
+    process.exit(1);
+  }
   
-  if (themesPaths == null || process.argv.length < 3 ||
-      themesPaths[process.argv[2]] === undefined) {
-    console.log(data);
+  var themesPaths = getThemesList(process.argv[2]);
+  
+  if (themesPaths === null) {
+    console.error(util.format('Cannot find styles in ("%s")', process.argv[2]));
   } else {
     var cssContent = fs.readFileSync(themesPaths[process.argv[2]], 'utf8');
     var res = process.argv.length > 3 
@@ -43,4 +42,3 @@ process.stdin.on('data', function(data) {
     console.log(output('<pre class="hljs">' + res.value + '</pre>'));
   }
 });
-
