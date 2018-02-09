@@ -8,6 +8,37 @@ const parserlib = require('parserlib');
 const path = require('path');
 const util = require('util');
 
+// @ Utils
+function isString(s) {
+  return typeof s === 'string' || s instanceof String;
+}
+
+// @ Theme class
+var Theme = function(name, path) {
+  if (!isString(name) || !isString(path)) throw '"name" and "path" must be two strings';
+  
+  this.name = name;
+  this.path = path;
+  this.selectors = new Map();
+};
+
+Theme.prototype.addSelector = function(selector) {
+  if (!isString(selector)) throw '"selector" must be a string';
+  
+  if (!this.selectors.has(selector)) this.selectors.set(selector, new Map());
+};
+
+Theme.prototype.addProperty = function(selector, property, value) {
+  if (!isString(selector) || !isString(property) || 
+      !isString(value)) throw '"selector", "property" and "value" must be three strings';
+  
+  if (!this.selectors.has(selector)) this.addSelector(selector);
+  
+  var selector = this.selectors.get(selector);
+  if (!selector.has(property)) selector.set(property, []);
+  selector.get(property).push(value);
+};
+
 function getThemesList(themesPath) {
   if (!fs.existsSync(themesPath)) return null;
   
@@ -18,7 +49,7 @@ function getThemesList(themesPath) {
   });
   
   return themesPaths;
-}
+};
 
 process.stdin.resume();
 process.stdin.setEncoding('utf8');
@@ -42,3 +73,6 @@ process.stdin.on('data', function(data) {
     console.log(output('<pre class="hljs">' + res.value + '</pre>'));
   }
 });
+
+exports.isString = isString;
+exports.Theme = Theme;

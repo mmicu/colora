@@ -1,9 +1,15 @@
 #!/bin/bash
 
-if ! [ -x "$(command -v svn)" ]; then
-  echo "Error: svn is not installed." >&2
-  exit 1
-fi
+function check_command {
+  if ! [ -x "$(command -v $1)" ]; then
+    echo "Error: '$1' is not installed." >&2
+    exit 1
+  fi
+}
+
+check_command "svn"
+check_command "realpath"
+check_command "dirname"
 
 SCRIPT=`realpath $0`
 SCRIPTPATH=`dirname $SCRIPT`
