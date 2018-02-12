@@ -2,77 +2,232 @@
 
 'use strict';
 
+const colors = require('colors');
 const fs = require('fs');
 const hljs = require('highlight.js');
+const htmlparser = require('htmlparser2');
+const parsecolor = require('parse-color');
 const parserlib = require('parserlib');
 const path = require('path');
 const util = require('util');
 
-// @ Utils
+// @ Globals
+var themeObj = null;
+// var propertiesTranslations = {
+//   'color': getColorValue,
+//   'background-color': getBackgroundColorValue,
+//   'font-style': getFontStyleValue,
+//   'font-weight': getFontStyleValue,
+//   'text-decoration': getTextDecorationValue
+// };
+var HTML_to_Terminal = {
+  'color': function(color) {
+    return parsecolor(color)['keyword'];
+  }
+};
+
+// @ Functions
 function isString(s) {
   return typeof s === 'string' || s instanceof String;
 }
 
+function getCSSThemePath(themesPath, themeName) {
+  if (!isString(themesPath) || !isString(themeName))
+    throw '"themesPath" and "themeName" must be two strings';
+  
+  if (!fs.existsSync(themesPath))
+    throw util.format('Path "%s" does not exist', themesPath);
+  
+  const ext = '.css';
+  var themePath = null;
+  var files = fs.readdirSync(themesPath);
+  
+  for (var i = 0; i < files.length; ++i) {
+    var file_ = files[i];
+    if (path.extname(file_) === ext && (path.basename(file_) === themeName ||
+        path.basename(file_, ext) === themeName))
+      return path.join(themesPath, file_);
+  }
+  
+  return null;
+}
+
+function colPrint(data, language) {
+  var hljsObj = isString(language)
+    ? hljs.highlight(language, data)
+    : hljs.highlightAuto(data);
+  var htmlContent = (hljsObj !== undefined && hljsObj !== null)
+    ? hljsObj.value
+    : null;
+  
+  if (htmlContent === null) {
+    console.log(data);
+  } else {
+    var htmlContentToList = htmlContent.split('\n');
+    
+    for (var i = 0; i < htmlContentToList.length; ++i) {
+      var line = htmlContentToList[i];
+      if (line.replace(/\s/g, '').length == 0) continue;
+      
+      var htmlParser = new htmlparser.Parser({
+        onopentag: function(name, attrs) {
+          if (name === 'span' && attrs['class'] !== undefined) {
+            var properties = themeObj.getPropertiesBySelector('.' + attrs['class']);
+            
+            if (properties !== null) {
+              for (var [key, value] of properties) {
+                console.log(key + " = " + value);
+              }
+            }
+          }
+        },
+        onclosetag: function(name) {
+          if (name === 'span') {
+            //console.log('close');
+          }
+        },
+        ontext: function(text) {
+          process.stdout.write(text);
+        }
+      }, { decodeEntities: true });
+      htmlParser.write(line);
+      htmlParser.end();
+      console.log();
+    }
+  }
+}
+
 // @ Theme class
 var Theme = function(name, path) {
-  if (!isString(name) || !isString(path)) throw '"name" and "path" must be two strings';
+  if (!isString(name) || !isString(path))
+    throw '"name" and "path" must be two strings';
   
   this.name = name;
   this.path = path;
   this.selectors = new Map();
+  this.currentSelector = null;
 };
 
 Theme.prototype.addSelector = function(selector) {
-  if (!isString(selector)) throw '"selector" must be a string';
+  if (!isString(selector))
+    throw '"selector" must be a string';
   
   if (!this.selectors.has(selector)) this.selectors.set(selector, new Map());
+  this.currentSelector = selector;
 };
 
-Theme.prototype.addProperty = function(selector, property, value) {
-  if (!isString(selector) || !isString(property) || 
-      !isString(value)) throw '"selector", "property" and "value" must be three strings';
+Theme.prototype.addProperty = function(property, value) {
+  if (!isString(property) || !isString(value))
+    throw '"property" and "value" must be two strings';
+  if (!isString(this.currentSelector))
+    throw 'Invalid selector';
+  if (!this.selectors.has(this.currentSelector))
+    throw util.format('First time encountered selector "%s"', this.currentSelector);
   
-  if (!this.selectors.has(selector)) this.addSelector(selector);
-  
-  var selector = this.selectors.get(selector);
-  if (!selector.has(property)) selector.set(property, []);
-  selector.get(property).push(value);
+  var selector = this.selectors.get(this.currentSelector);
+  selector.set(property, value); // overwrite duplicates
 };
 
-function getThemesList(themesPath) {
-  if (!fs.existsSync(themesPath)) return null;
+Theme.prototype.getPropertyBySelector = function(property, selector) {
+  if (!isString(property) || !isString(selector))
+    throw '"property" and "selector" must be two strings';
   
-  var themesPaths = {};
-  fs.readdirSync(themesPath).forEach(file => {
-    if (path.extname(file) == '.css')
-      themesPaths[path.parse(file).name] = path.join(themesPath, file);
+  var selectorMap = this.selectors.has(selector)
+    ? this.selectors.get(selector)
+    : null;
+  
+  return selectorMap.has(property)
+    ? selectorMap.get(property)
+    : null;
+};
+
+Theme.prototype.getPropertiesBySelector = function(selector) {
+  if (!isString(selector))
+    throw '"selector" must be a string';
+  
+  return this.selectors.has(selector)
+    ? this.selectors.get(selector)
+    : null;
+};
+
+// @ Main
+function main() {
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', function(data) {
+    if (process.argv.length < 4) {
+      console.error(util.format('Usage: node %s <themes directory> <theme> [language]', 
+        process.argv[1]));
+      process.exit(1);
+    }
+    
+    var themesPath = path.resolve(process.argv[2]);
+    var themeName = process.argv[3];
+    var language = (process.argv.length >= 5)
+      ? process.argv[4]
+      : null;
+    var themePath = getCSSThemePath(themesPath, themeName);
+    if (themePath === null) {
+      console.error(util.format('Cannot find style "%s" in "%s"', themeName, themesPath));
+      process.exit(1);
+    }
+    
+    console.log(util.format('Prog name: %s', process.argv[1]));
+    console.log(util.format('themesPath: %s', themesPath));
+    console.log(util.format('themeName: %s', themeName));
+    console.log(util.format('themePath: %s', themePath));
+    console.log(util.format('language: %s', language));
+    
+    themeObj = new Theme(themeName, themePath);
+    
+    // CSS parser
+    var cssParser = new parserlib.css.Parser({
+      starHack: true,
+      underscoreHack: true
+    });
+      // Listeners:
+    cssParser.addListener('startrule', function(event) {
+      for (var i = 0; i < event.selectors.length; ++i) {
+        var selector = event.selectors[i];
+        for (var j = 0; j < selector.parts.length; ++j) {
+          var part = selector.parts[j];
+          if (part instanceof parserlib.css.SelectorPart) {
+            var modifiers = part.modifiers;
+            for (var k = 0; k < modifiers.length; k++) {
+              var modifier = modifiers[k];
+              themeObj.addSelector(modifier.toString());
+            }
+          }
+        }
+      }
+    });
+    
+    cssParser.addListener('property', function(event) {
+      themeObj.addProperty(event.property.toString(), event.value.toString());
+    });
+    
+    cssParser.addListener('error', function(event) {
+      throw util.format('parser error: %s (line: %d, col: %d)', 
+        event.message, Number(event.line), Number(event.col));
+    });
+    
+    cssParser.addListener('endstylesheet', function() {
+      colPrint(data, language);
+    });
+
+      // Parse...
+    try {
+      cssParser.parse(fs.readFileSync(themePath, 'utf8'));
+    } catch(e) {
+      console.error(util.format('Error during parsing: %s', e));
+      process.exit(1);
+    }
   });
-  
-  return themesPaths;
-};
+}
 
-process.stdin.resume();
-process.stdin.setEncoding('utf8');
-process.stdin.on('data', function(data) {
-  if (process.argv.length !== 3) {
-    console.error(util.format('Usage: node %s <styles directory>', process.argv[1]));
-    process.exit(1);
-  }
-  
-  var themesPaths = getThemesList(process.argv[2]);
-  
-  if (themesPaths === null) {
-    console.error(util.format('Cannot find styles in ("%s")', process.argv[2]));
-  } else {
-    var cssContent = fs.readFileSync(themesPaths[process.argv[2]], 'utf8');
-    var res = process.argv.length > 3 
-      ? hljs.highlight(process.argv[3], data) 
-      : hljs.highlightAuto(data);
-    var output = htmlout.withCSS(cssContent);
+if (typeof require !== 'undefined' && require.main === module)
+  main();
 
-    console.log(output('<pre class="hljs">' + res.value + '</pre>'));
-  }
-});
-
+// @ exports
 exports.isString = isString;
 exports.Theme = Theme;

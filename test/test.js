@@ -33,5 +33,13 @@ describe('Testing...', function() {
     expect(t.selectors.size).to.be.equal(4);
     
     // addProperty
+    t.addSelector('foo');
+    expect(t.selectors.size).to.be.equal(4);
+      // add one property
+    t.addProperty('prop_a', 'prop_a_value');
+    expect(t.getPropertyBySelector('prop_a', 'foo')).to.be.equal('prop_a_value');
+      // add the same property with a different value
+    t.addProperty('prop_a', 'prop_new_value');
+    expect(t.getPropertyBySelector('prop_a', 'foo')).to.be.equal('prop_new_value');
   });
 });
