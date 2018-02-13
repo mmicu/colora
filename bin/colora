@@ -2,102 +2,75 @@
 
 'use strict';
 
-const colors = require('colors');
+const colorNamer = require('color-namer');
+const colorsLib = require('colors');
 const fs = require('fs');
 const hljs = require('highlight.js');
 const htmlparser = require('htmlparser2');
-const parsecolor = require('parse-color');
 const parserlib = require('parserlib');
 const path = require('path');
 const util = require('util');
 
-// @ Globals
-var themeObj = null;
-// var propertiesTranslations = {
-//   'color': getColorValue,
-//   'background-color': getBackgroundColorValue,
-//   'font-style': getFontStyleValue,
-//   'font-weight': getFontStyleValue,
-//   'text-decoration': getTextDecorationValue
-// };
-var HTML_to_Terminal = {
-  'color': function(color) {
-    return parsecolor(color)['keyword'];
-  }
+/*
+  TODO list:
+    * Refactoring.
+    * HTML_to_Terminal.
+    * Tests.
+    * correct 'onclosetag' => it must pop the proper values.
+*/
+
+
+  //
+var EXIT = {
+  SUCCESS: 0,
+  FAILURE: 1
 };
 
-// @ Functions
-function isString(s) {
-  return typeof s === 'string' || s instanceof String;
-}
+  //
+var themeObj = null;
 
-function getCSSThemePath(themesPath, themeName) {
-  if (!isString(themesPath) || !isString(themeName))
-    throw '"themesPath" and "themeName" must be two strings';
+  //
+var handleColor = function(key, color) {
+  var colors = colorNamer(color)['basic'];
   
-  if (!fs.existsSync(themesPath))
-    throw util.format('Path "%s" does not exist', themesPath);
-  
-  const ext = '.css';
-  var themePath = null;
-  var files = fs.readdirSync(themesPath);
-  
-  for (var i = 0; i < files.length; ++i) {
-    var file_ = files[i];
-    if (path.extname(file_) === ext && (path.basename(file_) === themeName ||
-        path.basename(file_, ext) === themeName))
-      return path.join(themesPath, file_);
+  for (var i = 0; i < colors.length; ++i) {
+    var c = colors[i]['name'];
+    if (key !== 'color' && c.length > 0)
+      c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
+    if (c in colorsLib)
+      return colorsLib[c];
   }
   
-  return null;
-}
+  return undefined;
+};
 
-function colPrint(data, language) {
-  var hljsObj = isString(language)
-    ? hljs.highlight(language, data)
-    : hljs.highlightAuto(data);
-  var htmlContent = (hljsObj !== undefined && hljsObj !== null)
-    ? hljsObj.value
-    : null;
-  
-  if (htmlContent === null) {
-    console.log(data);
-  } else {
-    var htmlContentToList = htmlContent.split('\n');
-    
-    for (var i = 0; i < htmlContentToList.length; ++i) {
-      var line = htmlContentToList[i];
-      if (line.replace(/\s/g, '').length == 0) continue;
-      
-      var htmlParser = new htmlparser.Parser({
-        onopentag: function(name, attrs) {
-          if (name === 'span' && attrs['class'] !== undefined) {
-            var properties = themeObj.getPropertiesBySelector('.' + attrs['class']);
-            
-            if (properties !== null) {
-              for (var [key, value] of properties) {
-                console.log(key + " = " + value);
-              }
-            }
-          }
-        },
-        onclosetag: function(name) {
-          if (name === 'span') {
-            //console.log('close');
-          }
-        },
-        ontext: function(text) {
-          process.stdout.write(text);
-        }
-      }, { decodeEntities: true });
-      htmlParser.write(line);
-      htmlParser.end();
-      console.log();
-    }
-  }
-}
+  //
+var HTML_to_Terminal = {}
+  // color
+HTML_to_Terminal['color'] = function(color) {
+  return handleColor('color', color);
+};
+  // background ~ background-color
+HTML_to_Terminal['background'] = function(color) {
+  return handleColor('background', color);
+};
+HTML_to_Terminal['background-color'] = function(color) {
+  return handleColor('background-color', color);
+};
+  // font-weight
+HTML_to_Terminal['font-weight'] = function(font_weight) {
+  // only bold
+};
+  // font-style
+HTML_to_Terminal['font-style'] = function(font_style) {
+  // only italic
+};
+  // text-decoration
+HTML_to_Terminal['text-decoration'] = function(text_decoration) {
+  // only underline
+};
 
-// @ Theme class
+  // Theme class
 var Theme = function(name, path) {
   if (!isString(name) || !isString(path))
     throw '"name" and "path" must be two strings';
@@ -150,84 +123,180 @@ Theme.prototype.getPropertiesBySelector = function(selector) {
     : null;
 };
 
-// @ Main
-function main() {
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', function(data) {
-    if (process.argv.length < 4) {
-      console.error(util.format('Usage: node %s <themes directory> <theme> [language]', 
-        process.argv[1]));
-      process.exit(1);
+// +++ Functions +++
+function isString(s) {
+  return typeof s === 'string' || s instanceof String;
+}
+
+function getCSSThemePath(themesPath, themeName) {
+  if (!isString(themesPath) || !isString(themeName))
+    throw '"themesPath" and "themeName" must be two strings';
+  
+  if (!fs.existsSync(themesPath))
+    throw util.format('Path "%s" does not exist', themesPath);
+  
+  const ext = '.css';
+  var themePath = null;
+  var files = fs.readdirSync(themesPath);
+  
+  for (var i = 0; i < files.length; ++i) {
+    var file_ = files[i];
+    if (path.extname(file_) === ext && (path.basename(file_) === themeName ||
+        path.basename(file_, ext) === themeName))
+      return path.join(themesPath, file_);
+  }
+  
+  return null;
+}
+
+function applyHTMLTransformation(list, selector) {
+  if (!isString(selector))
+    throw '"selector" must be a string';
+    
+  var properties = themeObj.getPropertiesBySelector(selector);
+  if (properties !== null) {
+    for (var [key, value] of properties) {
+      if (key in HTML_to_Terminal) {
+        var func = HTML_to_Terminal[key](value);
+        if (func !== undefined)
+          list.push(func);
+      }
     }
+  }
+}
+
+function applyThemeAndPrint(data, language) {
+  var hljsObj = isString(language)
+    ? hljs.highlight(language, data)
+    : hljs.highlightAuto(data);
+  var htmlContent = (hljsObj !== undefined && hljsObj !== null)
+    ? hljsObj.value
+    : null;
+  
+  if (htmlContent === null) {
+    console.log(data);
+  } else {
+    var htmlContentToList = htmlContent.split('\n');
+    var modifiers = []; // list of functions
+      // apply hljs's properties
+    applyHTMLTransformation(modifiers, '.hljs');
     
-    var themesPath = path.resolve(process.argv[2]);
-    var themeName = process.argv[3];
-    var language = (process.argv.length >= 5)
-      ? process.argv[4]
-      : null;
-    var themePath = getCSSThemePath(themesPath, themeName);
-    if (themePath === null) {
-      console.error(util.format('Cannot find style "%s" in "%s"', themeName, themesPath));
-      process.exit(1);
+    for (var i = 0; i < htmlContentToList.length; ++i) {
+      var line = htmlContentToList[i];
+      if (line.replace(/\s/g, '').length == 0) continue;
+      
+      var htmlParser = new htmlparser.Parser({
+        onopentag: function(name, attrs) {
+          if (name === 'span')
+            applyHTMLTransformation(modifiers, '.' + attrs['class']);
+        },
+        onclosetag: function(name) {
+          if (name === 'span' && modifiers.length > 0)
+            modifiers.pop();
+        },
+        ontext: function(text) {
+          for (var i = 0; i < modifiers.length; ++i)
+            text = modifiers[i](text);
+          process.stdout.write(text);
+        }
+      }, { decodeEntities: true });
+      htmlParser.write(line);
+      htmlParser.end();
+      process.stdout.write('\n');
     }
-    
-    console.log(util.format('Prog name: %s', process.argv[1]));
-    console.log(util.format('themesPath: %s', themesPath));
-    console.log(util.format('themeName: %s', themeName));
-    console.log(util.format('themePath: %s', themePath));
-    console.log(util.format('language: %s', language));
-    
-    themeObj = new Theme(themeName, themePath);
-    
-    // CSS parser
-    var cssParser = new parserlib.css.Parser({
-      starHack: true,
-      underscoreHack: true
-    });
-      // Listeners:
-    cssParser.addListener('startrule', function(event) {
-      for (var i = 0; i < event.selectors.length; ++i) {
-        var selector = event.selectors[i];
-        for (var j = 0; j < selector.parts.length; ++j) {
-          var part = selector.parts[j];
-          if (part instanceof parserlib.css.SelectorPart) {
-            var modifiers = part.modifiers;
-            for (var k = 0; k < modifiers.length; k++) {
-              var modifier = modifiers[k];
-              themeObj.addSelector(modifier.toString());
-            }
+  }
+}
+
+function main(argc, argv, sourceCode) { 
+  if (argc < 4) {
+    console.error(util.format('Usage: node %s <themes directory> <theme> [language]', argv[1]));
+    process.exit(EXIT.FAILURE);
+  }
+    // directory that contains all *.css files
+  var themesPath = path.resolve(process.argv[2]);
+  if (!fs.existsSync(themesPath))if (!fs.existsSync(themesPath)) {
+    console.error(util.format('Path "%s" does not exist', themesPath));
+    process.exit(EXIT.FAILURE);
+  }
+    // with the theme name we can obtain its path
+  var themeName = process.argv[3];
+  var themePath = getCSSThemePath(themesPath, themeName);
+  if (themePath === null) {
+    console.error(util.format('Cannot find style "%s" in "%s"', themeName, themesPath));
+    process.exit(EXIT.FAILURE);
+  }
+    // language is not mandatory. highlight.js can detect it
+  var language = (process.argv.length >= 5)
+    ? process.argv[4]
+    : null;
+  if (language !== null && hljs.getLanguage(language) === undefined) {
+    console.error(util.format('highlight.js does not support language "%s"', language));
+    process.exit(EXIT.FAILURE);
+  }
+  
+  // todo remove
+  console.log(util.format('Prog name: %s', process.argv[1]));
+  console.log(util.format('themesPath: %s', themesPath));
+  console.log(util.format('themeName: %s', themeName));
+  console.log(util.format('themePath: %s', themePath));
+  console.log(util.format('language: %s', language));
+  // todo remove
+  
+    // update theme object
+  themeObj = new Theme(themeName, themePath);
+  
+    // css parser
+  var cssParser = new parserlib.css.Parser({
+    starHack: true,
+    underscoreHack: true
+  });
+    // listeners:
+  cssParser.addListener('startrule', function(event) {
+    for (var i = 0; i < event.selectors.length; ++i) {
+      var selector = event.selectors[i];
+      for (var j = 0; j < selector.parts.length; ++j) {
+        var part = selector.parts[j];
+        if (part instanceof parserlib.css.SelectorPart) {
+          var modifiers = part.modifiers;
+          for (var k = 0; k < modifiers.length; k++) {
+            var modifier = modifiers[k];
+            themeObj.addSelector(modifier.toString());
           }
         }
       }
-    });
-    
-    cssParser.addListener('property', function(event) {
-      themeObj.addProperty(event.property.toString(), event.value.toString());
-    });
-    
-    cssParser.addListener('error', function(event) {
-      throw util.format('parser error: %s (line: %d, col: %d)', 
-        event.message, Number(event.line), Number(event.col));
-    });
-    
-    cssParser.addListener('endstylesheet', function() {
-      colPrint(data, language);
-    });
-
-      // Parse...
-    try {
-      cssParser.parse(fs.readFileSync(themePath, 'utf8'));
-    } catch(e) {
-      console.error(util.format('Error during parsing: %s', e));
-      process.exit(1);
     }
+  });
+    
+  cssParser.addListener('property', function(event) {
+    themeObj.addProperty(event.property.toString(), event.value.toString());
+  });
+    
+  cssParser.addListener('error', function(event) {
+    throw util.format('parser error: %s (line: %d, col: %d)', 
+      event.message, Number(event.line), Number(event.col));
+  });
+    
+  cssParser.addListener('endstylesheet', function() {
+    applyThemeAndPrint(sourceCode, language);
+  });
+  
+  try {
+    cssParser.parse(fs.readFileSync(themePath, 'utf8'));
+  } catch(e) {
+    console.error(util.format('Error during parsing: %s', e));
+    process.exit(1);
+  }
+}
+
+if (typeof require !== 'undefined' && require.main === module) {
+  process.stdin.resume();
+  process.stdin.setEncoding('utf8');
+  
+  process.stdin.on('data', function(data) {
+    main(process.argv.length, process.argv, data);
   });
 }
 
-if (typeof require !== 'undefined' && require.main === module)
-  main();
-
-// @ exports
+// +++ exports +++
 exports.isString = isString;
 exports.Theme = Theme;
