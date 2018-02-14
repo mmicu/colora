@@ -19,6 +19,94 @@ const util = require('util');
     * correct 'onclosetag' => it must pop the proper values.
 */
 
+// Theme class
+var Theme = function(name, path) {
+  if (!isString(name) || !isString(path))
+    throw '"name" and "path" must be two strings';
+
+  this.name = name;
+  this.path = path;
+  this.selectors = new Map();
+  this._currentSelector = null;
+};
+
+Theme.prototype.addSelector = function(selector) {
+  if (!isString(selector))
+    throw '"selector" must be a string';
+
+  if (!this.selectors.has(selector)) this.selectors.set(selector, new Map());
+    this._currentSelector = selector;
+};
+
+Theme.prototype.addProperty = function(property, value) {
+  if (!isString(property) || !isString(value))
+    throw '"property" and "value" must be two strings';
+  if (!isString(this._currentSelector))
+    throw 'Invalid selector';
+  if (!this.selectors.has(this._currentSelector))
+    throw util.format('First time encountered selector "%s"', this._currentSelector);
+
+  var selector = this.selectors.get(this._currentSelector);
+  selector.set(property, value); // overwrite duplicates
+};
+
+Theme.prototype.getPropertyBySelector = function(property, selector) {
+  if (!isString(property) || !isString(selector))
+    throw '"property" and "selector" must be two strings';
+
+  var selectorMap = this.selectors.has(selector)
+    ? this.selectors.get(selector)
+    : null;
+
+  return selectorMap.has(property)
+    ? selectorMap.get(property)
+    : null;
+};
+
+Theme.prototype.getPropertiesBySelector = function(selector) {
+  if (!isString(selector))
+    throw '"selector" must be a string';
+
+  return this.selectors.has(selector)
+    ? this.selectors.get(selector)
+    : null;
+};
+
+Theme.prototype.parseCSS = function(callback) {
+  var cssParser = new parserlib.css.Parser({
+    starHack: true,
+    underscoreHack: true
+  });
+  const self = this;
+    // listeners:
+  cssParser.addListener('startrule', function(event) {
+    event.selectors.forEach(function(selector) {
+      selector.parts.forEach(function(part) {
+        if (part instanceof parserlib.css.SelectorPart) {
+          part.modifiers.forEach(function(modifier) {
+            self.addSelector(modifier.toString());
+          });
+        }
+      });
+    });
+  });
+
+  cssParser.addListener('property', function(event) {
+    self.addProperty(event.property.toString(), event.value.toString());
+  });
+  
+  cssParser.addListener('error', function(event) {
+    throw util.format('parser error: %s (line: %d, col: %d)', 
+      event.message, Number(event.line), Number(event.col));
+  });
+  
+  cssParser.addListener('endstylesheet', function() {
+    callback();
+  });
+
+  // caller should handle exception
+  cssParser.parse(fs.readFileSync(this.path, 'utf8'));
+}
 
   //
 var EXIT = {
@@ -27,19 +115,22 @@ var EXIT = {
 };
 
   //
-var themeObj = null;
-
-  //
 var handleColor = function(key, color) {
-  var colors = colorNamer(color)['basic'];
-  
-  for (var i = 0; i < colors.length; ++i) {
-    var c = colors[i]['name'];
-    if (key !== 'color' && c.length > 0)
-      c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
-    if (c in colorsLib)
-      return colorsLib[c];
+  var isBackgroundAttr = function(s) {
+    return s === 'background' || s === 'background-color';
   }
+  
+  try {
+    var colors = colorNamer(color)['basic'];
+    
+    for (var i = 0; i < colors.length; ++i) {
+      var c = colors[i]['name'];
+      if (isBackgroundAttr(c))
+        c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
+      if (c in colorsLib)
+        return colorsLib[c];
+    }
+  } catch (e) { }
   
   return undefined;
 };
@@ -70,59 +161,6 @@ HTML_to_Terminal['text-decoration'] = function(text_decoration) {
   // only underline
 };
 
-  // Theme class
-var Theme = function(name, path) {
-  if (!isString(name) || !isString(path))
-    throw '"name" and "path" must be two strings';
-  
-  this.name = name;
-  this.path = path;
-  this.selectors = new Map();
-  this.currentSelector = null;
-};
-
-Theme.prototype.addSelector = function(selector) {
-  if (!isString(selector))
-    throw '"selector" must be a string';
-  
-  if (!this.selectors.has(selector)) this.selectors.set(selector, new Map());
-  this.currentSelector = selector;
-};
-
-Theme.prototype.addProperty = function(property, value) {
-  if (!isString(property) || !isString(value))
-    throw '"property" and "value" must be two strings';
-  if (!isString(this.currentSelector))
-    throw 'Invalid selector';
-  if (!this.selectors.has(this.currentSelector))
-    throw util.format('First time encountered selector "%s"', this.currentSelector);
-  
-  var selector = this.selectors.get(this.currentSelector);
-  selector.set(property, value); // overwrite duplicates
-};
-
-Theme.prototype.getPropertyBySelector = function(property, selector) {
-  if (!isString(property) || !isString(selector))
-    throw '"property" and "selector" must be two strings';
-  
-  var selectorMap = this.selectors.has(selector)
-    ? this.selectors.get(selector)
-    : null;
-  
-  return selectorMap.has(property)
-    ? selectorMap.get(property)
-    : null;
-};
-
-Theme.prototype.getPropertiesBySelector = function(selector) {
-  if (!isString(selector))
-    throw '"selector" must be a string';
-  
-  return this.selectors.has(selector)
-    ? this.selectors.get(selector)
-    : null;
-};
-
 // +++ Functions +++
 function isString(s) {
   return typeof s === 'string' || s instanceof String;
@@ -149,7 +187,7 @@ function getCSSThemePath(themesPath, themeName) {
   return null;
 }
 
-function applyHTMLTransformation(list, selector) {
+function applyHTMLTransformation(themeObj, list, selector) {
   if (!isString(selector))
     throw '"selector" must be a string';
     
@@ -165,7 +203,7 @@ function applyHTMLTransformation(list, selector) {
   }
 }
 
-function applyThemeAndPrint(data, language) {
+function applyThemeAndPrint(themeObj, data, language) {
   var hljsObj = isString(language)
     ? hljs.highlight(language, data)
     : hljs.highlightAuto(data);
@@ -179,7 +217,7 @@ function applyThemeAndPrint(data, language) {
     var htmlContentToList = htmlContent.split('\n');
     var modifiers = []; // list of functions
       // apply hljs's properties
-    applyHTMLTransformation(modifiers, '.hljs');
+    applyHTMLTransformation(themeObj, modifiers, '.hljs');
     
     for (var i = 0; i < htmlContentToList.length; ++i) {
       var line = htmlContentToList[i];
@@ -188,7 +226,7 @@ function applyThemeAndPrint(data, language) {
       var htmlParser = new htmlparser.Parser({
         onopentag: function(name, attrs) {
           if (name === 'span')
-            applyHTMLTransformation(modifiers, '.' + attrs['class']);
+            applyHTMLTransformation(themeObj, modifiers, '.' + attrs['class']);
         },
         onclosetag: function(name) {
           if (name === 'span' && modifiers.length > 0)
@@ -234,55 +272,13 @@ function main(argc, argv, sourceCode) {
     process.exit(EXIT.FAILURE);
   }
   
-  // todo remove
-  console.log(util.format('Prog name: %s', process.argv[1]));
-  console.log(util.format('themesPath: %s', themesPath));
-  console.log(util.format('themeName: %s', themeName));
-  console.log(util.format('themePath: %s', themePath));
-  console.log(util.format('language: %s', language));
-  // todo remove
-  
-    // update theme object
-  themeObj = new Theme(themeName, themePath);
-  
-    // css parser
-  var cssParser = new parserlib.css.Parser({
-    starHack: true,
-    underscoreHack: true
-  });
-    // listeners:
-  cssParser.addListener('startrule', function(event) {
-    for (var i = 0; i < event.selectors.length; ++i) {
-      var selector = event.selectors[i];
-      for (var j = 0; j < selector.parts.length; ++j) {
-        var part = selector.parts[j];
-        if (part instanceof parserlib.css.SelectorPart) {
-          var modifiers = part.modifiers;
-          for (var k = 0; k < modifiers.length; k++) {
-            var modifier = modifiers[k];
-            themeObj.addSelector(modifier.toString());
-          }
-        }
-      }
-    }
-  });
-    
-  cssParser.addListener('property', function(event) {
-    themeObj.addProperty(event.property.toString(), event.value.toString());
-  });
-    
-  cssParser.addListener('error', function(event) {
-    throw util.format('parser error: %s (line: %d, col: %d)', 
-      event.message, Number(event.line), Number(event.col));
-  });
-    
-  cssParser.addListener('endstylesheet', function() {
-    applyThemeAndPrint(sourceCode, language);
-  });
-  
+    // parse CSS & print the source code by applying theme
   try {
-    cssParser.parse(fs.readFileSync(themePath, 'utf8'));
-  } catch(e) {
+    var themeObj = new Theme(themeName, themePath);
+    themeObj.parseCSS(function() {
+      applyThemeAndPrint(themeObj, sourceCode, language);
+    });
+  } catch (e) {
     console.error(util.format('Error during parsing: %s', e));
     process.exit(1);
   }
