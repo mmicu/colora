@@ -16,17 +16,17 @@ var EXIT = {
   FAILURE: 1
 };
 
-var SUPPORTED_COLORS = [
-  "black",
-  "red",
-  "green",
-  "yellow",
-  "blue",
-  "magenta",
-  "cyan",
-  "white",
-  "gray",
-  "grey"
+var SUPPORTED_COLORS = [ 
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'gray',
+  'grey'
 ];
 
 var ColoraUtils = {
