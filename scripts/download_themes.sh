@@ -1,15 +1,15 @@
 #!/bin/bash
 
-function check_command {
+function check_program {
   if ! [ -x "$(command -v $1)" ]; then
     echo "Error: '$1' is not installed." >&2
     exit 1
   fi
 }
 
-check_command "svn"
-check_command "realpath"
-check_command "dirname"
+check_program "svn"
+check_program "realpath"
+check_program "dirname"
 
 SCRIPT=`realpath $0`
 SCRIPTPATH=`dirname $SCRIPT`
