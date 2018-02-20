@@ -9,6 +9,8 @@ const hljs = require('highlight.js');
 const htmlparser = require('htmlparser2');
 const parserlib = require('parserlib');
 const path = require('path');
+const program = require('commander');
+const pkg = require('../package.json');
 const util = require('util');
 
 var EXIT = {
@@ -52,7 +54,7 @@ var handleColor = function(key, color) {
     for (var i = 0; i < colors.length; ++i) {
       var c = colors[i]['name'];
       
-      if (isBackgroundAttr(key))
+      if (isBackgroundAttr(key)) // |key| > 0
         c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
       if (c in colorsLib)
         return colorsLib[c];
@@ -341,56 +343,76 @@ function applyThemeAndPrint(themeObj, data, language) {
   }
 }
 
-function main(argc, argv, sourceCode) { 
-  if (argc < 4) {
-    console.error(util.format('Usage: node %s <themes directory> <theme> [language]', argv[1]));
-    process.exit(EXIT.FAILURE);
-  }
+function colora(sourceCode, language, theme, themesPath) {
     // directory that contains all *.css files
-  var themesPath = path.resolve(process.argv[2]);
-  if (!fs.existsSync(themesPath))if (!fs.existsSync(themesPath)) {
+  themesPath = path.resolve(themesPath);
+  if (!fs.existsSync(themesPath)) {
     console.error(util.format('Path "%s" does not exist', themesPath));
-    process.exit(EXIT.FAILURE);
+    return EXIT.FAILURE;
   }
     // with the theme name we can obtain its path
-  var themeName = process.argv[3];
-  var themePath = getCSSThemePath(themesPath, themeName);
+  var themePath = getCSSThemePath(themesPath, theme);
   if (themePath === null) {
-    console.error(util.format('Cannot find style "%s" in "%s"', themeName, themesPath));
-    process.exit(EXIT.FAILURE);
+    console.error(util.format('Cannot find style "%s" in "%s"', theme, themesPath));
+    return EXIT.FAILURE;
   }
     // language is not mandatory. highlight.js can detect it
-  var language = (process.argv.length >= 5)
-    ? process.argv[4]
-    : null;
-  if (language !== null && hljs.getLanguage(language) === undefined) {
+  if (language !== undefined && hljs.getLanguage(language) === undefined) {
     console.error(util.format('highlight.js does not support language "%s"', language));
-    process.exit(EXIT.FAILURE);
+    return EXIT.FAILURE;
   }
-  
     // parse CSS & print the source code by applying theme
   try {
-    var themeObj = new Theme(themeName, themePath);
+    var themeObj = new Theme(theme, themePath);
     themeObj.parseCSS(function() {
       applyThemeAndPrint(themeObj, sourceCode, language);
     });
   } catch (e) {
     console.error(util.format('Error during parsing: %s', e));
-    process.exit(EXIT.FAILURE);
+    return EXIT.FAILURE;
   }
   
-  process.exit(EXIT.SUCCESS);
+  return EXIT.SUCCESS;
 }
 
-if (typeof require !== 'undefined' && require.main === module) {
-  process.stdin.resume();
-  process.stdin.setEncoding('utf8');
+function main(argv, argc) {
+  program
+    .version(pkg.version)
+    .option('-f, --file [file]', 'Source file')
+    .option('-l, --language [lang]', 'Programming language')
+    .option('-s, --style [style]', 'Style to apply to source code')
+    .option('-t, --themes-path [path]', 'Themes path');
+  program.parse(process.argv);
   
-  process.stdin.on('data', function(data) {
-    main(process.argv.length, process.argv, data);
-  });
+  var file = program.file;
+  var language = program.language;
+  var style = program.style;
+  var themesPath = program.path;
+
+  if (themesPath === undefined) {
+    console.error('Missing argument "themes path". Use -h or --help');
+    process.exit(EXIT.FAILURE)
+  }
+  
+  if (file === undefined) {
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', function(data) {
+      process.exit(colora(data, language, style, themesPath));
+    });
+  } else {
+    if (!fs.existsSync(file)) {
+      console.error(util.format('File "%s" does not exist', file));
+      process.exit(EXIT.FAILURE);
+    }
+    
+    process.exit(colora(fs.readFileSync(file, 'utf8'), language, style, themesPath));
+  }
 }
+
+if (typeof require !== 'undefined' && require.main === module)
+  main(process.argv.length, process.argv);
 
 // +++ exports +++
-exports.isString = ColoraUtils.isString;
+exports.MyUtils = ColoraUtils;
 exports.Theme = Theme;

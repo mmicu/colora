@@ -1,15 +1,16 @@
 const expect = require('chai').expect;
 
-const isString = require('../bin/colora').isString;
-const Theme = require('../bin/colora').Theme;
+const lib = require('../bin/colora');
+const MyUtils = lib.MyUtils;
+const Theme = lib.Theme;
 
 describe('Testing...', function() {
   it('Utils class', function() {
-    // isString
-    expect(isString('')).to.be.true;
-    expect(isString(' ')).to.be.true;
-    expect(isString(undefined)).to.be.false;
-    expect(isString(null)).to.be.false;
+      // isString
+    expect(MyUtils.isString('')).to.be.true;
+    expect(MyUtils.isString(' ')).to.be.true;
+    expect(MyUtils.isString(undefined)).to.be.false;
+    expect(MyUtils.isString(null)).to.be.false;
   });
   
   it('Theme class', function() {
