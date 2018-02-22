@@ -375,23 +375,23 @@ function colora(sourceCode, language, theme, themesPath) {
   return EXIT.SUCCESS;
 }
 
-function main(argv, argc) {
+function main(argc, argv) {
   program
     .version(pkg.version)
+    .usage('<themes path> [options]')
     .option('-f, --file [file]', 'Source file')
     .option('-l, --language [lang]', 'Programming language')
-    .option('-s, --style [style]', 'Style to apply to source code')
-    .option('-t, --themes-path [path]', 'Themes path');
+    .option('-s, --style [style]', 'Style to apply to source code');
   program.parse(process.argv);
   
-  var file = program.file;
-  var language = program.language;
-  var style = program.style;
-  var themesPath = program.path;
-
+  var file = program.file || undefined;
+  var language = program.language || undefined;
+  var style = program.style || 'default';
+  var themesPath = program.args[0] || undefined;
+  
   if (themesPath === undefined) {
     console.error('Missing argument "themes path". Use -h or --help');
-    process.exit(EXIT.FAILURE)
+    process.exit(EXIT.FAILURE);
   }
   
   if (file === undefined) {

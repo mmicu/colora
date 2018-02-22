@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 function check_program {
   if ! [ -x "$(command -v $1)" ]; then
