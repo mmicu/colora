@@ -107,10 +107,10 @@ Theme.prototype.addSelector = function(selector) {
   if (!ColoraUtils.isString(selector))
     throw '"selector" must be a string';
 
-  if (!this.selectors.has(selector)) {
+  if (!this.selectors.has(selector))
     this.selectors.set(selector, new Map());
+  if (!this._currentSelectors.includes(selector))
     this._currentSelectors.push(selector);
-  }
 };
 
 
@@ -182,12 +182,15 @@ Theme.prototype.parseCSS = function(callback) {
   });
   
   cssParser.addListener('error', function(event) {
-    throw util.format('parser error: %s (line: %d, col: %d)', 
-      event.message, Number(event.line), Number(event.col));
+    callback({ 
+      error: true,
+      desc: util.format('parser error: %s (line: %d, col: %d)', 
+                        event.message, Number(event.line), Number(event.col))
+    });
   });
   
   cssParser.addListener('endstylesheet', function() {
-    callback();
+    callback({ error: false, desc: null });
   });
 
   // caller should handle exception
@@ -295,6 +298,7 @@ function applyThemeAndPrint(themeObj, data, language) {
   if (htmlContent === null) {
     console.log(data);
   } else {
+    console.log(htmlContent)
     var htmlContentToList = htmlContent.split('\n');
     var maxLength = getMaxLineLength(htmlContentToList);
       // list of functions
@@ -362,17 +366,35 @@ function colora(sourceCode, language, theme, themesPath) {
     return EXIT.FAILURE;
   }
     // parse CSS & print the source code by applying theme
-  try {
-    var themeObj = new Theme(theme, themePath);
-    themeObj.parseCSS(function() {
+  var themeObj = new Theme(theme, themePath);
+  themeObj.parseCSS(function(data) {
+    var error_key = 'error';
+    var desc_key = 'desc';
+    
+    if (!(error_key in data) || !(desc_key in data)) {
+      console.error('Data returned from "parseCSS" is not valid');
+      return EXIT.FAILURE;
+    }
+    
+    var error = data[error_key];
+    
+    if (error === true) {
+      var desc = data[desc_key];
+      if (desc === undefined || desc === null) desc = 'unknown error';
+      
+      console.error(util.format('Unable to parse CSS: %s', desc));
+      return EXIT.FAILURE;
+    }
+    
+    try {
       applyThemeAndPrint(themeObj, sourceCode, language);
-    });
-  } catch (e) {
-    console.error(util.format('Error during parsing: %s', e));
-    return EXIT.FAILURE;
-  }
-  
-  return EXIT.SUCCESS;
+    } catch (e) {
+      console.error(util.format('Unable to apply theme: %s', e));
+      return EXIT.FAILURE;
+    }
+    
+    return EXIT.SUCCESS
+  });
 }
 
 function main(argc, argv) {
