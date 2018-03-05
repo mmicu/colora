@@ -7,4 +7,3 @@ if __name__ == '__main__':
 	print(ll)
 
 	sys.exit(0)
-
