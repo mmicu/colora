@@ -409,7 +409,7 @@ function main(argc, argv) {
     .usage('<themes path> <theme> [options]')
     .option('-f, --file [file]', 'Source file')
     .option('-l, --language [lang]', 'Programming language')
-  program.parse(process.argv);
+    .parse(process.argv);
   
   var file = program.file || null;
   var language = program.language || null;
