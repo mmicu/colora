@@ -1,8 +1,12 @@
 {
   "name": "colora",
   "version": "0.0.1",
-  "description": "",
-  "main": "index.js",
+  "description": "Syntax highlighting in your terminal",
+  "keywords": [
+    "terminal-colors",
+    "syntax-highlighting"
+  ],
+  "author": "mmicu <mmicu0@gmail.com>",
   "bin": {
     "colora": "./bin/colora"
   },
