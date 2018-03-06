@@ -10,15 +10,16 @@ const htmlparser = require('htmlparser2');
 const parserlib = require('parserlib');
 const path = require('path');
 const program = require('commander');
-const pkg = require('../package.json');
 const util = require('util');
+
+const pkg = require('../package.json');
 
 var EXIT = {
   SUCCESS: 0,
   FAILURE: 1
 };
 
-var SUPPORTED_COLORS = [ 
+var SUPPORTED_COLORS = [
   'black',
   'red',
   'green',
@@ -31,7 +32,7 @@ var SUPPORTED_COLORS = [
   'grey'
 ];
 
-var ColoraUtils = {
+var _Utils = {
   isString: function(s) {
     return typeof s === 'string' || s instanceof String;
   },
@@ -40,117 +41,113 @@ var ColoraUtils = {
   },
   isBoolean: function(b) {
     return b === true || b === false;
+  },
+  isNull: function(v) {
+    return v === undefined || v === null;
   }
 };
 
-var handleColor = function(key, color) {
+var getColor = function(key, color) {
   var isBackgroundAttr = function(s) {
     return s === 'background' || s === 'background-color';
+  };
+
+  var colors = colorNamer(color)['basic'] || [];
+  
+  for (var i = 0, l = colors.length; i < l; ++i) {
+    var c = colors[i]['name'] || null;
+    if (_Utils.isNull(c)) continue;
+
+    if (isBackgroundAttr(key) && c.length > 0)
+      c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
+    if (c in colorsLib)
+      return colorsLib[c];
   }
 
-  try {
-    var colors = colorNamer(color)['basic'];
-    
-    for (var i = 0; i < colors.length; ++i) {
-      var c = colors[i]['name'];
-      
-      if (isBackgroundAttr(key)) // |key| > 0
-        c = 'bg' + c[0].toUpperCase() + c.substring(1, c.length);
-      if (c in colorsLib)
-        return colorsLib[c];
-    }
-  } catch (e) { }
-
-  return undefined;
+  return null;
 };
 
 var HTML_to_Terminal = {}
   // color
 HTML_to_Terminal['color'] = function(color) {
-  return handleColor('color', color);
+  return getColor('color', color);
 };
-  // background ~ background-color
+  // background & background-color
 HTML_to_Terminal['background'] = function(color) {
-  return handleColor('background', color);
+  return getColor('background', color);
 };
 HTML_to_Terminal['background-color'] = function(color) {
-  return handleColor('background-color', color);
+  return getColor('background-color', color);
 };
   // font-weight
-HTML_to_Terminal['font-weight'] = function(font_weight) {
+HTML_to_Terminal['font-weight'] = function(fontWeight) {
   // normal|bold|bolder|lighter|number|initial|inherit
-  return colorsLib[font_weight];
+  return colorsLib[fontWeight];
 };
   // font-style
-HTML_to_Terminal['font-style'] = function(font_style) {
+HTML_to_Terminal['font-style'] = function(fontStyle) {
   // normal|italic|oblique|initial|inherit
-  return colorsLib[font_style];
+  return colorsLib[fontStyle];
 };
   // text-decoration
-HTML_to_Terminal['text-decoration'] = function(text_decoration) {
+HTML_to_Terminal['text-decoration'] = function(textDecoration) {
   // none|underline|overline|line-through|initial|inherit
-  return colorsLib[text_decoration];
+  return colorsLib[textDecoration];
 };
 
-// +++ Theme class +++
 var Theme = function(name, path) {
-  if (!ColoraUtils.isString(name) || !ColoraUtils.isString(path))
+  if (!_Utils.isString(name) || !_Utils.isString(path))
     throw '"name" and "path" must be two strings';
 
   this.name = name;
   this.path = path;
-  this.selectors = new Map();
+  this.selectors = {};
+  this.selectorsSize = 0;
   this._currentSelectors = [];
 };
 
 Theme.prototype.addSelector = function(selector) {
-  if (!ColoraUtils.isString(selector))
+  if (!_Utils.isString(selector))
     throw '"selector" must be a string';
 
-  if (!this.selectors.has(selector))
-    this.selectors.set(selector, new Map());
+  if (!(selector in this.selectors)) {
+    this.selectors[selector] = {};
+    ++this.selectorsSize;
+  }
   if (!this._currentSelectors.includes(selector))
     this._currentSelectors.push(selector);
 };
 
-
 Theme.prototype.addProperty = function(property, value) {
-  if (!ColoraUtils.isString(property) || !ColoraUtils.isString(value))
+  if (!_Utils.isString(property) || !_Utils.isString(value))
     throw '"property" and "value" must be two strings';
-  if (!ColoraUtils.isArray(this._currentSelectors))
+  if (!_Utils.isArray(this._currentSelectors))
     throw 'Invalid selectors';
-    
+
   for (var i = 0, l = this._currentSelectors.length; i < l; ++i) {
     var selectorName = this._currentSelectors[i];
-    
-    if (!this.selectors.has(selectorName))
+
+    if (!(selectorName in this.selectors))
       throw util.format('First time encountered selector "%s"', selectorName);
-    
-    var selector = this.selectors.get(selectorName);
-    selector.set(property, value); // overwrite duplicates
+
+    this.selectors[selectorName][property] = value; // overwrite duplicates
   }
 };
 
 Theme.prototype.getPropertyBySelector = function(property, selector) {
-  if (!ColoraUtils.isString(property) || !ColoraUtils.isString(selector))
+  if (!_Utils.isString(property) || !_Utils.isString(selector))
     throw '"property" and "selector" must be two strings';
 
-  var selectorMap = this.selectors.has(selector)
-    ? this.selectors.get(selector)
-    : null;
+  var selectorProperties = this.selectors[selector] || {};
 
-  return selectorMap.has(property)
-    ? selectorMap.get(property)
-    : null;
+  return selectorProperties[property] || null;
 };
 
 Theme.prototype.getPropertiesBySelector = function(selector) {
-  if (!ColoraUtils.isString(selector))
+  if (!_Utils.isString(selector))
     throw '"selector" must be a string';
 
-  return this.selectors.has(selector)
-    ? this.selectors.get(selector)
-    : null;
+  return this.selectors[selector] || null;
 };
 
 Theme.prototype.parseCSS = function(callback) {
@@ -159,11 +156,12 @@ Theme.prototype.parseCSS = function(callback) {
     underscoreHack: true
   });
   const self = this;
+
     // listeners:
   cssParser.addListener('startrule', function(event) {
     event.selectors.forEach(function(selector) {
       selector.parts.forEach(function(part) {
-        if (part instanceof parserlib.css.SelectorPart && part.elementName === null) {
+        if (part instanceof parserlib.css.SelectorPart && _Utils.isNull(part.elementName)) {
           part.modifiers.forEach(function(modifier) {
             self.addSelector(modifier.toString());
           });
@@ -171,16 +169,15 @@ Theme.prototype.parseCSS = function(callback) {
       });
     });
   });
-  
+
   cssParser.addListener('endrule', function(event) {
     self._currentSelectors = [];
   });
 
-
   cssParser.addListener('property', function(event) {
     self.addProperty(event.property.toString(), event.value.toString());
   });
-  
+
   cssParser.addListener('error', function(event) {
     callback({ 
       error: true,
@@ -197,42 +194,29 @@ Theme.prototype.parseCSS = function(callback) {
   cssParser.parse(fs.readFileSync(this.path, 'utf8'));
 }
 
-// +++ Functions +++
-function getCSSThemePath(themesPath, themeName) {
-  if (!ColoraUtils.isString(themesPath) || !ColoraUtils.isString(themeName))
+function getCSSPath(themesPath, themeName) {
+  if (!_Utils.isString(themesPath) || !_Utils.isString(themeName))
     throw '"themesPath" and "themeName" must be two strings';
-  
+
   if (!fs.existsSync(themesPath))
     throw util.format('Path "%s" does not exist', themesPath);
-  
+
   const ext = '.css';
   var themePath = null;
-  var files = fs.readdirSync(themesPath);
+  var files = [];
   
-  for (var i = 0; i < files.length; ++i) {
+  try {
+    files = fs.readdirSync(themesPath);
+  } catch (e) { }
+
+  for (var i = 0, l = files.length; i < l; ++i) {
     var file_ = files[i];
     if (path.extname(file_) === ext && (path.basename(file_) === themeName ||
         path.basename(file_, ext) === themeName))
       return path.join(themesPath, file_);
   }
-  
-  return null;
-}
 
-function applyHTMLTransformation(themeObj, list, selector) {
-  if (!ColoraUtils.isString(selector))
-    throw '"selector" must be a string';
-    
-  var properties = themeObj.getPropertiesBySelector(selector);
-  if (properties !== null) {
-    for (var [key, value] of properties) {
-      if (key in HTML_to_Terminal) {
-        var func = HTML_to_Terminal[key](value);
-        if (func !== undefined)
-          list.push(func);
-      }
-    }
-  }
+  return null;
 }
 
 function getMaxLineLength(lines) {
@@ -249,100 +233,124 @@ function getMaxLineLength(lines) {
     return ret;
   };
   
-  if (!ColoraUtils.isArray(lines))
+  if (!_Utils.isArray(lines))
     throw '"lines" must be an array';
   
   var numLines = lines.length;
   if (numLines === 0) return 0;
   
   var textLines = [];
-  for (var i = 0; i < numLines; ++i)
-    textLines.push(getTextFromHTMLLine(lines[i].trim()));
+  for (var i = 0; i < numLines; ++i) {
+    var trimLine = lines[i].trim();
+    try {
+      textLines.push(getTextFromHTMLLine((trimLine.length > 0 ? lines[i] : trimLine)));
+    } catch (e) { }
+  }
   
-  var max = textLines[0].length;
+  var max = textLines[0].length; // |textLines| > 0
   for (var i = 0; i < numLines; ++i)
     max = Math.max(textLines[i].length, max);
     
   return max;
 }
 
-function applyModifiers(modifiers, text) {
-  if (!ColoraUtils.isArray(modifiers))
-    throw '"modifiers" must be an array';
-  if (!ColoraUtils.isString(text))
+function appendColouredFunctions(themeObj, selector, modifiersList) {
+  if (_Utils.isNull(themeObj))
+    throw '"themeObj" cannot be null';
+  if (!_Utils.isString(selector))
+    throw '"selector" must be a string';
+  if (!_Utils.isArray(modifiersList))
+    throw '"modifiersList" must be an array';
+    
+    // { selector : value, ..., selector : value }
+  var properties = themeObj.getPropertiesBySelector(selector);
+  if (!_Utils.isNull(properties)) {
+    for (var selector in properties) {
+      if (properties.hasOwnProperty(selector) && selector in HTML_to_Terminal) {
+        var func = HTML_to_Terminal[selector](properties[selector]);
+        if (!_Utils.isNull(func)) modifiersList.push(func);
+      }
+    }
+  }
+}
+
+function applyModifiers(modifiersList, text) {
+  if (!_Utils.isArray(modifiersList))
+    throw '"modifiersList" must be an array';
+  if (!_Utils.isString(text))
     throw '"text" must be a string';
   
-  for (var i = modifiers.length - 1, colorApplied = false; i >= 0; --i) {
-    var styleName = ('_styles' in modifiers[i] && 
-                    ColoraUtils.isArray(modifiers[i]._styles) &&
-                    modifiers[i]._styles.length > 0)
-                      ? modifiers[i]._styles[0]
-                      : null;
-    if (styleName !== null && (!colorApplied || !(styleName in SUPPORTED_COLORS)))
-      text = modifiers[i](text);
-    if (styleName !== null && !colorApplied && styleName in SUPPORTED_COLORS)
-      colorApplied = true;
+  if (modifiersList.length === 0) return text;
+  
+  for (var i = modifiersList.length - 1, colorApplied = false; i >= 0; --i) {
+    try {
+      var styleName = modifiersList[i]['_styles'][0];
+      
+      if (!_Utils.isNull(styleName) && (!colorApplied || !(styleName in SUPPORTED_COLORS))) {
+        text = modifiersList[i](text);
+        if (!colorApplied && styleName in SUPPORTED_COLORS)
+          colorApplied = true;
+      }
+    } catch (e) { }
   }
   
   return text;
 }
 
-function applyThemeAndPrint(themeObj, data, language) {
-  var hljsObj = ColoraUtils.isString(language)
+function printColouredCode(themeObj, data, language) {
+  var hljsObj = _Utils.isString(language)
     ? hljs.highlight(language, data)
     : hljs.highlightAuto(data);
-  var htmlContent = (hljsObj !== undefined && hljsObj !== null)
+  var htmlContent = !_Utils.isNull(hljsObj)
     ? hljsObj.value
     : null;
   
-  if (htmlContent === null) {
+  if (_Utils.isNull(htmlContent)) {
     console.log(data);
   } else {
-    console.log(htmlContent)
     var htmlContentToList = htmlContent.split('\n');
     var maxLength = getMaxLineLength(htmlContentToList);
       // list of functions
-    var modifiers = [];
+    var modifiersList = [];
       // apply hljs's properties
-    applyHTMLTransformation(themeObj, modifiers, '.hljs');
+    appendColouredFunctions(themeObj, '.hljs', modifiersList);
     
-    for (var i = 0; i < htmlContentToList.length; ++i) {
+    for (var i = 0, l = htmlContentToList.length; i < l; ++i) {
       var line = htmlContentToList[i];
-      var how_many_pops = 0;
+      var howManyPops = 0;
       var totalLen = 0;
       if (line.replace(/\s/g, '').length == 0) continue;
       
       var htmlParser = new htmlparser.Parser({
         onopentag: function(name, attrs) {
           if (name === 'span') {
-            var old_len = modifiers.length;
+            var oldLen = modifiersList.length;
             
-            applyHTMLTransformation(themeObj, modifiers, '.' + attrs['class']);
-            how_many_pops = modifiers.length - old_len;
-            if (how_many_pops < 0) how_many_pops = 0; // just to be sure...
+            appendColouredFunctions(themeObj, '.' + attrs['class'], modifiersList);
+            howManyPops = modifiersList.length - oldLen;
+            if (howManyPops < 0) howManyPops = 0; // just to be sure...
           }
         },
         onclosetag: function(name) {
-          if (name === 'span' && modifiers.length > 0 && how_many_pops > 0) {
-            if (how_many_pops >= modifiers.length)
+          if (name === 'span' && modifiersList.length > 0 && howManyPops > 0) {
+            if (howManyPops > modifiersList.length)
               throw 'Too many Array.pop()';
             
-            for (var i = 0; i < how_many_pops; ++i) modifiers.pop();
-            how_many_pops = 0;
+            for (var i = 0; i < howManyPops; ++i) modifiersList.pop();
+            howManyPops = 0;
           }
         },
         ontext: function(text) {
-          totalLen += text.length;
-          process.stdout.write(applyModifiers(modifiers, text));
+          totalLen += (!_Utils.isNull(text)) ? text.length : 0;
+          process.stdout.write(applyModifiers(modifiersList, text));
         }
       }, { decodeEntities: true });
       htmlParser.write(line);
       htmlParser.end();
-      var suffix =  + '\n';
-      process.stdout.write(
-        applyModifiers(modifiers, ' '.repeat(maxLength - totalLen)) +
-        '\n'
-      );
+      
+      var nRepeat = maxLength - totalLen;
+      if (nRepeat < 0) nRepeat = 0;
+      process.stdout.write(applyModifiers(modifiersList, ' '.repeat(nRepeat)) + '\n');
     }
   }
 }
@@ -355,68 +363,65 @@ function colora(sourceCode, language, theme, themesPath) {
     return EXIT.FAILURE;
   }
     // with the theme name we can obtain its path
-  var themePath = getCSSThemePath(themesPath, theme);
-  if (themePath === null) {
+  var themePath = getCSSPath(themesPath, theme);
+  if (_Utils.isNull(themePath)) {
     console.error(util.format('Cannot find style "%s" in "%s"', theme, themesPath));
     return EXIT.FAILURE;
   }
     // language is not mandatory. highlight.js can detect it
-  if (language !== undefined && hljs.getLanguage(language) === undefined) {
+  if (!_Utils.isNull(language) && _Utils.isNull(hljs.getLanguage(language))) {
     console.error(util.format('highlight.js does not support language "%s"', language));
     return EXIT.FAILURE;
   }
-    // parse CSS & print the source code by applying theme
+    // parse CSS & print the source code by applying the theme
   var themeObj = new Theme(theme, themePath);
   themeObj.parseCSS(function(data) {
-    var error_key = 'error';
-    var desc_key = 'desc';
+    var errorKey = 'error';
+    var descKey = 'desc';
     
-    if (!(error_key in data) || !(desc_key in data)) {
+    if (!(errorKey in data) || !(descKey in data)) {
       console.error('Data returned from "parseCSS" is not valid');
       return EXIT.FAILURE;
     }
     
-    var error = data[error_key];
-    
-    if (error === true) {
-      var desc = data[desc_key];
-      if (desc === undefined || desc === null) desc = 'unknown error';
-      
+    var error = data[errorKey];
+    if (error) {
+      var desc = data[descKey];
+      if (_Utils.isNull(desc)) desc = 'unknown error';
       console.error(util.format('Unable to parse CSS: %s', desc));
       return EXIT.FAILURE;
     }
     
     try {
-      applyThemeAndPrint(themeObj, sourceCode, language);
+      printColouredCode(themeObj, sourceCode, language);
     } catch (e) {
       console.error(util.format('Unable to apply theme: %s', e));
       return EXIT.FAILURE;
     }
     
-    return EXIT.SUCCESS
+    return EXIT.SUCCESS;
   });
 }
 
 function main(argc, argv) {
   program
     .version(pkg.version)
-    .usage('<themes path> [options]')
+    .usage('<themes path> <theme> [options]')
     .option('-f, --file [file]', 'Source file')
     .option('-l, --language [lang]', 'Programming language')
-    .option('-s, --style [style]', 'Style to apply to source code');
   program.parse(process.argv);
   
-  var file = program.file || undefined;
-  var language = program.language || undefined;
-  var style = program.style || 'default';
-  var themesPath = program.args[0] || undefined;
+  var file = program.file || null;
+  var language = program.language || null;
+  var themesPath = program.args[0] || null;
+  var style = program.args[1] || null;
   
-  if (themesPath === undefined) {
-    console.error('Missing argument "themes path". Use -h or --help');
+  if (_Utils.isNull(themesPath) || _Utils.isNull(style)) {
+    console.error('You need to specify the themes path and the theme. Use -h or --help');
     process.exit(EXIT.FAILURE);
   }
   
-  if (file === undefined) {
+  if (_Utils.isNull(file)) {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', function(data) {
@@ -435,6 +440,5 @@ function main(argc, argv) {
 if (typeof require !== 'undefined' && require.main === module)
   main(process.argv.length, process.argv);
 
-// +++ exports +++
-exports.MyUtils = ColoraUtils;
+exports.MyUtils = _Utils;
 exports.Theme = Theme;
